@@ -1,0 +1,51 @@
+trigger:
+  branches:
+    include:
+      - main
+
+pool:
+  vmImage: 'ubuntu-latest'
+
+variables:
+  imageName: 'my-app'
+
+steps:
+  # Checkout Code
+  - task: Checkout@1
+    displayName: 'Checkout repository'
+
+  # Login to Azure CLI
+  - task: AzureCLI@2
+    inputs:
+      azureSubscription: '<Azure Subscription Name>'
+      scriptType: 'bash'
+      scriptLocation: 'inlineScript'
+      inlineScript: |
+        az acr login --name myContainerRegistry
+
+  # Build Docker Image
+  - task: Docker@2
+    inputs:
+      containerRegistry: 'myACR'
+      repository: 'my-app'
+      command: 'buildAndPush'
+      Dockerfile: '**/Dockerfile'
+      tags: |
+        $(Build.BuildId)
+
+  # Deploy Azure Container Instance
+  - task: AzureCLI@2
+    inputs:
+      azureSubscription: '<Azure Subscription Name>'
+      scriptType: 'bash'
+      scriptLocation: 'inlineScript'
+      inlineScript: |
+        az container create \
+          --resource-group my-resource-group \
+          --name my-container-group \
+          --image myContainerRegistry.azurecr.io/my-app:$(Build.BuildId) \
+          --cpu 1 \
+          --memory 1.5 \
+          --registry-login-server myContainerRegistry.azurecr.io \
+          --registry-username $(az acr credential show --name myContainerRegistry --query username) \
+          --registry-password $(az acr credential show --name myContainerRegistry --query passwords[0].value)
